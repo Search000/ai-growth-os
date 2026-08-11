@@ -1,0 +1,25 @@
+# Secrets - NEVER commit
+.env
+.env.local
+*.key
+*.pem
+
+# Local AI models - too big, never commit
+OllamaModels/
+*.gguf
+*.bin
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+*.exe 
