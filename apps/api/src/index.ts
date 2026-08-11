@@ -9,6 +9,7 @@ import { isAllowedByRobots } from "./crawler/robots.js";
 import { fetchPage } from "./crawler/fetcher.js";
 import { extractMetadata } from "./crawler/metadata.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
+import { runSeoAgent } from "./agent/seo-agent.js";
 
 registerTools();
 
@@ -116,6 +117,20 @@ app.post("/api/seo/analyze", async (req, res, next) => {
     const score = scoreChecks(checks);
 
     res.json({ url: normalized, score, checks });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/agent/seo", async (req, res, next) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const report = await runSeoAgent(normalizeUrl(url));
+    res.json(report);
   } catch (err) {
     next(err);
   }
