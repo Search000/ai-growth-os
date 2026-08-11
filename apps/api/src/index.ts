@@ -4,6 +4,10 @@ import { logger } from "./logger.js";
 import { errorHandler, notFoundHandler, AppError } from "./error-handler.js";
 import { getAIProvider } from "./ai/index.js";
 import { registerTools, toolRegistry } from "./tools/index.js";
+import { isValidUrl, normalizeUrl } from "./crawler/url-utils.js";
+import { isAllowedByRobots } from "./crawler/robots.js";
+import { fetchPage } from "./crawler/fetcher.js";
+import { extractMetadata } from "./crawler/metadata.js";
 
 registerTools();
 
@@ -58,6 +62,34 @@ app.post("/api/chat", async (req, res, next) => {
     const result = await provider.chat([{ role: "user", content: message }]);
 
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/crawl/page", async (req, res, next) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const normalized = normalizeUrl(url);
+
+    const allowed = await isAllowedByRobots(normalized);
+    if (!allowed) {
+      throw new AppError("Blocked by robots.txt", 403);
+    }
+
+    const page = await fetchPage(normalized);
+    const metadata = extractMetadata(page.html, normalized);
+
+    res.json({
+      url: normalized,
+      statusCode: page.statusCode,
+      durationMs: page.durationMs,
+      metadata,
+    });
   } catch (err) {
     next(err);
   }
