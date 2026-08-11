@@ -1,0 +1,14 @@
+{
+  "name": "ai-growth-os",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "^20 || ^22 || ^24"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @ai-growth-os/api dev",
+    "dev:web": "pnpm --filter @ai-growth-os/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
