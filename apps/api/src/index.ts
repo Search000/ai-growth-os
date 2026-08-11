@@ -8,6 +8,7 @@ import { isValidUrl, normalizeUrl } from "./crawler/url-utils.js";
 import { isAllowedByRobots } from "./crawler/robots.js";
 import { fetchPage } from "./crawler/fetcher.js";
 import { extractMetadata } from "./crawler/metadata.js";
+import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 
 registerTools();
 
@@ -90,6 +91,31 @@ app.post("/api/crawl/page", async (req, res, next) => {
       durationMs: page.durationMs,
       metadata,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/seo/analyze", async (req, res, next) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const normalized = normalizeUrl(url);
+
+    const allowed = await isAllowedByRobots(normalized);
+    if (!allowed) {
+      throw new AppError("Blocked by robots.txt", 403);
+    }
+
+    const page = await fetchPage(normalized);
+    const metadata = extractMetadata(page.html, normalized);
+    const checks = runSeoChecks(metadata, page.statusCode);
+    const score = scoreChecks(checks);
+
+    res.json({ url: normalized, score, checks });
   } catch (err) {
     next(err);
   }
