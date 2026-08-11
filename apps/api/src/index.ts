@@ -1,4 +1,5 @@
 ﻿import express from "express";
+import cors from "cors";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { errorHandler, notFoundHandler, AppError } from "./error-handler.js";
@@ -11,13 +12,14 @@ import { extractMetadata } from "./crawler/metadata.js";
 import { crawlSite } from "./crawler/site-crawler.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
-import { saveReport, listReports, getReport } from "./db/reports.js";
+import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
 import "./db/client.js";
 
 registerTools();
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 app.get("/health", (req, res) => {
@@ -176,6 +178,18 @@ app.get("/api/reports/:id", (req, res, next) => {
       throw new AppError("Report not found", 404);
     }
     res.json({ report });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete("/api/reports/:id", (req, res, next) => {
+  try {
+    const deleted = deleteReport(Number(req.params.id));
+    if (!deleted) {
+      throw new AppError("Report not found", 404);
+    }
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }

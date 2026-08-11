@@ -42,3 +42,9 @@ export function getReport(id: number): SeoAuditReportRow | undefined {
   const stmt = db.prepare(`SELECT * FROM seo_audit_reports WHERE id = ?`);
   return stmt.get(id) as SeoAuditReportRow | undefined;
 }
+
+export function deleteReport(id: number): boolean {
+  const stmt = db.prepare(`DELETE FROM seo_audit_reports WHERE id = ?`);
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
