@@ -8,6 +8,7 @@ import { isValidUrl, normalizeUrl } from "./crawler/url-utils.js";
 import { isAllowedByRobots } from "./crawler/robots.js";
 import { fetchPage } from "./crawler/fetcher.js";
 import { extractMetadata } from "./crawler/metadata.js";
+import { crawlSite } from "./crawler/site-crawler.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
 import { saveReport, listReports, getReport } from "./db/reports.js";
@@ -94,6 +95,20 @@ app.post("/api/crawl/page", async (req, res, next) => {
       durationMs: page.durationMs,
       metadata,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/crawl/site", async (req, res, next) => {
+  try {
+    const { url, maxPages } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const result = await crawlSite(url, { maxPages: maxPages ?? 10 });
+    res.json(result);
   } catch (err) {
     next(err);
   }
