@@ -10,6 +10,8 @@ import { fetchPage } from "./crawler/fetcher.js";
 import { extractMetadata } from "./crawler/metadata.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
+import { saveReport, listReports, getReport } from "./db/reports.js";
+import "./db/client.js";
 
 registerTools();
 
@@ -130,7 +132,35 @@ app.post("/api/agent/seo", async (req, res, next) => {
     }
 
     const report = await runSeoAgent(normalizeUrl(url));
-    res.json(report);
+
+    const toolResult = report.toolResult as { score: number; checks: unknown };
+    const savedId = saveReport({
+      url: report.url,
+      score: toolResult.score,
+      checks: toolResult.checks,
+      recommendation: report.recommendation,
+      durationMs: report.durationMs,
+    });
+
+    res.json({ ...report, savedId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/reports", (req, res) => {
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const reports = listReports(limit);
+  res.json({ reports });
+});
+
+app.get("/api/reports/:id", (req, res, next) => {
+  try {
+    const report = getReport(Number(req.params.id));
+    if (!report) {
+      throw new AppError("Report not found", 404);
+    }
+    res.json({ report });
   } catch (err) {
     next(err);
   }
