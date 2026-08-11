@@ -3,6 +3,9 @@ import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { errorHandler, notFoundHandler, AppError } from "./error-handler.js";
 import { getAIProvider } from "./ai/index.js";
+import { registerTools, toolRegistry } from "./tools/index.js";
+
+registerTools();
 
 const app = express();
 
@@ -21,6 +24,24 @@ app.get("/api/ai/health", async (req, res, next) => {
     const provider = getAIProvider();
     const healthy = await provider.healthCheck();
     res.json({ aiHealthy: healthy, model: config.AI_MODEL });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/tools", (req, res) => {
+  const tools = toolRegistry.list().map((t) => ({
+    name: t.name,
+    description: t.description,
+    permission: t.permission,
+  }));
+  res.json({ tools });
+});
+
+app.post("/api/tools/:name/execute", async (req, res, next) => {
+  try {
+    const result = await toolRegistry.execute(req.params.name, req.body ?? {});
+    res.json({ result });
   } catch (err) {
     next(err);
   }
