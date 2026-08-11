@@ -13,6 +13,7 @@ import { crawlSite } from "./crawler/site-crawler.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
 import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
+import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import "./db/client.js";
 
 registerTools();
@@ -190,6 +191,25 @@ app.delete("/api/reports/:id", (req, res, next) => {
       throw new AppError("Report not found", 404);
     }
     res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/engine/:type", async (req, res, next) => {
+  try {
+    const engineType = req.params.type;
+    if (!["geo", "aeo", "cro"].includes(engineType)) {
+      throw new AppError(`Unknown engine type: ${engineType}. Use geo, aeo, or cro.`, 400);
+    }
+
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const report = await runAnalysisEngine(engineType as "geo" | "aeo" | "cro", normalizeUrl(url));
+    res.json(report);
   } catch (err) {
     next(err);
   }
