@@ -14,6 +14,8 @@ import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
 import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
 import { runAnalysisEngine } from "./engines/analysis-engine.js";
+import { generateContent, type ContentType } from "./engines/content-engine.js";
+import { runStrategyEngine } from "./engines/strategy-engine.js";
 import "./db/client.js";
 
 registerTools();
@@ -199,8 +201,8 @@ app.delete("/api/reports/:id", (req, res, next) => {
 app.post("/api/engine/:type", async (req, res, next) => {
   try {
     const engineType = req.params.type;
-    if (!["geo", "aeo", "cro"].includes(engineType)) {
-      throw new AppError(`Unknown engine type: ${engineType}. Use geo, aeo, or cro.`, 400);
+    if (!["geo", "aeo", "cro", "lpo"].includes(engineType)) {
+      throw new AppError(`Unknown engine type: ${engineType}. Use geo, aeo, cro, or lpo.`, 400);
     }
 
     const { url } = req.body;
@@ -208,8 +210,47 @@ app.post("/api/engine/:type", async (req, res, next) => {
       throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
     }
 
-    const report = await runAnalysisEngine(engineType as "geo" | "aeo" | "cro", normalizeUrl(url));
+    const report = await runAnalysisEngine(engineType, normalizeUrl(url));
     res.json(report);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/strategy/:type", async (req, res, next) => {
+  try {
+    const engineType = req.params.type;
+    if (!["sem", "aso", "vseo", "smo", "orm"].includes(engineType)) {
+      throw new AppError(`Unknown strategy engine: ${engineType}. Use sem, aso, vseo, smo, or orm.`, 400);
+    }
+
+    const { topic } = req.body;
+    if (!topic || typeof topic !== "string") {
+      throw new AppError("Field \"topic\" (string) is required", 400);
+    }
+
+    const report = await runStrategyEngine(engineType, topic);
+    res.json(report);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/content/:type", async (req, res, next) => {
+  try {
+    const contentType = req.params.type as ContentType;
+    const validTypes: ContentType[] = ["brief", "outline", "article", "landing-copy", "product-description", "faq", "social-post", "meta-description", "title", "cta"];
+    if (!validTypes.includes(contentType)) {
+      throw new AppError(`Unknown content type: ${contentType}. Use one of: ${validTypes.join(", ")}`, 400);
+    }
+
+    const { topic, context } = req.body;
+    if (!topic || typeof topic !== "string") {
+      throw new AppError("Field \"topic\" (string) is required", 400);
+    }
+
+    const result = await generateContent(contentType, topic, context);
+    res.json(result);
   } catch (err) {
     next(err);
   }
