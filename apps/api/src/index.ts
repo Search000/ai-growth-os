@@ -17,9 +17,30 @@ import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import { generateContent, type ContentType } from "./engines/content-engine.js";
 import { runStrategyEngine } from "./engines/strategy-engine.js";
 import { addMemory, getRecentMemory, clearMemory } from "./db/memory.js";
+import { registerJobHandler, enqueueJob } from "./jobs/runner.js";
+import { getJob, listJobs } from "./db/jobs.js";
 import "./db/client.js";
 
 registerTools();
+
+registerJobHandler("crawl_site", async (input) => {
+  const { url, maxPages } = input as { url: string; maxPages?: number };
+  return crawlSite(url, { maxPages: maxPages ?? 10 });
+});
+
+registerJobHandler("seo_agent", async (input) => {
+  const { url } = input as { url: string };
+  const report = await runSeoAgent(url);
+  const toolResult = report.toolResult as { score: number; checks: unknown };
+  saveReport({
+    url: report.url,
+    score: toolResult.score,
+    checks: toolResult.checks,
+    recommendation: report.recommendation,
+    durationMs: report.durationMs,
+  });
+  return report;
+});
 
 const app = express();
 
@@ -121,15 +142,44 @@ app.post("/api/crawl/page", async (req, res, next) => {
   }
 });
 
-app.post("/api/crawl/site", async (req, res, next) => {
+app.post("/api/jobs/crawl-site", (req, res, next) => {
   try {
     const { url, maxPages } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
       throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
     }
+    const jobId = enqueueJob("crawl_site", { url: normalizeUrl(url), maxPages });
+    res.status(202).json({ jobId, status: "pending" });
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const result = await crawlSite(url, { maxPages: maxPages ?? 10 });
-    res.json(result);
+app.post("/api/jobs/seo-agent", (req, res, next) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+    const jobId = enqueueJob("seo_agent", { url: normalizeUrl(url) });
+    res.status(202).json({ jobId, status: "pending" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/jobs", (req, res) => {
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  res.json({ jobs: listJobs(limit) });
+});
+
+app.get("/api/jobs/:id", (req, res, next) => {
+  try {
+    const job = getJob(Number(req.params.id));
+    if (!job) {
+      throw new AppError("Job not found", 404);
+    }
+    res.json({ job });
   } catch (err) {
     next(err);
   }
