@@ -16,6 +16,7 @@ import { saveReport, listReports, getReport, deleteReport } from "./db/reports.j
 import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import { generateContent, type ContentType } from "./engines/content-engine.js";
 import { runStrategyEngine } from "./engines/strategy-engine.js";
+import { addMemory, getRecentMemory, clearMemory } from "./db/memory.js";
 import "./db/client.js";
 
 registerTools();
@@ -63,18 +64,33 @@ app.post("/api/tools/:name/execute", async (req, res, next) => {
 
 app.post("/api/chat", async (req, res, next) => {
   try {
-    const { message } = req.body;
+    const { message, sessionId } = req.body;
     if (!message || typeof message !== "string") {
       throw new AppError("Field \"message\" (string) is required", 400);
     }
+    const sid = typeof sessionId === "string" && sessionId ? sessionId : "default";
+
+    const history = getRecentMemory(sid, 10);
+    const messages = [
+      ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
+      { role: "user" as const, content: message },
+    ];
 
     const provider = getAIProvider();
-    const result = await provider.chat([{ role: "user", content: message }]);
+    const result = await provider.chat(messages);
 
-    res.json(result);
+    addMemory(sid, "user", message);
+    addMemory(sid, "assistant", result.content);
+
+    res.json({ ...result, sessionId: sid });
   } catch (err) {
     next(err);
   }
+});
+
+app.delete("/api/chat/:sessionId", (req, res) => {
+  clearMemory(req.params.sessionId);
+  res.json({ cleared: true });
 });
 
 app.post("/api/crawl/page", async (req, res, next) => {
