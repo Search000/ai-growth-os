@@ -1,5 +1,6 @@
 ﻿import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { errorHandler, notFoundHandler, AppError } from "./error-handler.js";
@@ -47,6 +48,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { message: "Too many requests, slow down.", statusCode: 429 } },
+});
+app.use(globalLimiter);
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { message: "AI request limit reached, please wait a minute.", statusCode: 429 } },
+});
+
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -74,7 +92,7 @@ app.get("/api/tools", (req, res) => {
   res.json({ tools });
 });
 
-app.post("/api/tools/:name/execute", async (req, res, next) => {
+app.post("/api/tools/:name/execute", aiLimiter, async (req, res, next) => {
   try {
     const result = await toolRegistry.execute(req.params.name, req.body ?? {});
     res.json({ result });
@@ -83,7 +101,7 @@ app.post("/api/tools/:name/execute", async (req, res, next) => {
   }
 });
 
-app.post("/api/chat", async (req, res, next) => {
+app.post("/api/chat", aiLimiter, async (req, res, next) => {
   try {
     const { message, sessionId } = req.body;
     if (!message || typeof message !== "string") {
@@ -114,7 +132,7 @@ app.delete("/api/chat/:sessionId", (req, res) => {
   res.json({ cleared: true });
 });
 
-app.post("/api/crawl/page", async (req, res, next) => {
+app.post("/api/crawl/page", aiLimiter, async (req, res, next) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
@@ -142,7 +160,7 @@ app.post("/api/crawl/page", async (req, res, next) => {
   }
 });
 
-app.post("/api/jobs/crawl-site", (req, res, next) => {
+app.post("/api/jobs/crawl-site", aiLimiter, (req, res, next) => {
   try {
     const { url, maxPages } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
@@ -155,7 +173,7 @@ app.post("/api/jobs/crawl-site", (req, res, next) => {
   }
 });
 
-app.post("/api/jobs/seo-agent", (req, res, next) => {
+app.post("/api/jobs/seo-agent", aiLimiter, (req, res, next) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
@@ -185,7 +203,7 @@ app.get("/api/jobs/:id", (req, res, next) => {
   }
 });
 
-app.post("/api/seo/analyze", async (req, res, next) => {
+app.post("/api/seo/analyze", aiLimiter, async (req, res, next) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
@@ -210,7 +228,7 @@ app.post("/api/seo/analyze", async (req, res, next) => {
   }
 });
 
-app.post("/api/agent/seo", async (req, res, next) => {
+app.post("/api/agent/seo", aiLimiter, async (req, res, next) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
@@ -264,7 +282,7 @@ app.delete("/api/reports/:id", (req, res, next) => {
   }
 });
 
-app.post("/api/engine/:type", async (req, res, next) => {
+app.post("/api/engine/:type", aiLimiter, async (req, res, next) => {
   try {
     const engineType = req.params.type;
     if (!["geo", "aeo", "cro", "lpo"].includes(engineType)) {
@@ -283,7 +301,7 @@ app.post("/api/engine/:type", async (req, res, next) => {
   }
 });
 
-app.post("/api/strategy/:type", async (req, res, next) => {
+app.post("/api/strategy/:type", aiLimiter, async (req, res, next) => {
   try {
     const engineType = req.params.type;
     if (!["sem", "aso", "vseo", "smo", "orm"].includes(engineType)) {
@@ -302,7 +320,7 @@ app.post("/api/strategy/:type", async (req, res, next) => {
   }
 });
 
-app.post("/api/content/:type", async (req, res, next) => {
+app.post("/api/content/:type", aiLimiter, async (req, res, next) => {
   try {
     const contentType = req.params.type as ContentType;
     const validTypes: ContentType[] = ["brief", "outline", "article", "landing-copy", "product-description", "faq", "social-post", "meta-description", "title", "cta"];
