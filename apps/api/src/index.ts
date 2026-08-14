@@ -21,6 +21,9 @@ import { addMemory, getRecentMemory, clearMemory } from "./db/memory.js";
 import { registerJobHandler, enqueueJob } from "./jobs/runner.js";
 import { getJob, listJobs } from "./db/jobs.js";
 import { apiKeyAuth } from "./auth/api-key.js";
+import { createSchedule, listSchedules, setScheduleEnabled, deleteSchedule } from "./db/schedules.js";
+import { startScheduler, refreshScheduler } from "./scheduler/index.js";
+import cron from "node-cron";
 import "./db/client.js";
 
 registerTools();
@@ -43,6 +46,8 @@ registerJobHandler("seo_agent", async (input) => {
   });
   return report;
 });
+
+startScheduler();
 
 const app = express();
 
@@ -201,6 +206,54 @@ app.get("/api/jobs/:id", (req, res, next) => {
       throw new AppError("Job not found", 404);
     }
     res.json({ job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/schedules", (req, res, next) => {
+  try {
+    const { name, jobType, jobInput, cronExpression } = req.body;
+    if (!name || !jobType || !cronExpression) {
+      throw new AppError("Fields \"name\", \"jobType\", \"cronExpression\" are required", 400);
+    }
+    if (!cron.validate(cronExpression)) {
+      throw new AppError("Invalid cron expression", 400);
+    }
+    const id = createSchedule(name, jobType, jobInput ?? {}, cronExpression);
+    refreshScheduler();
+    res.status(201).json({ id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/schedules", (req, res) => {
+  res.json({ schedules: listSchedules() });
+});
+
+app.patch("/api/schedules/:id", (req, res, next) => {
+  try {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      throw new AppError("Field \"enabled\" (boolean) is required", 400);
+    }
+    setScheduleEnabled(Number(req.params.id), enabled);
+    refreshScheduler();
+    res.json({ updated: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete("/api/schedules/:id", (req, res, next) => {
+  try {
+    const deleted = deleteSchedule(Number(req.params.id));
+    if (!deleted) {
+      throw new AppError("Schedule not found", 404);
+    }
+    refreshScheduler();
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }
