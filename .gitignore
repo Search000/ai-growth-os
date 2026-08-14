@@ -27,3 +27,7 @@ Thumbs.db
 data/
 
 backups/
+
+*.zip
+
+*.zip

@@ -2,6 +2,8 @@
 import "./App.css";
 
 const API_BASE = "http://localhost:3000";
+const API_KEY = "4apbx97mqk1wvi5ocye68sgjutnr3dz0";
+const authHeaders = { "Content-Type": "application/json", "x-api-key": API_KEY };
 
 interface SeoCheck {
   id: string;
@@ -44,7 +46,7 @@ function App() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/ai/health`)
+    fetch(`${API_BASE}/api/ai/health`, { headers: authHeaders })
       .then((r) => r.json())
       .then((d) => setAiHealthy(d.aiHealthy))
       .catch(() => setAiHealthy(false));
@@ -52,7 +54,7 @@ function App() {
   }, []);
 
   function loadReports() {
-    fetch(`${API_BASE}/api/reports`)
+    fetch(`${API_BASE}/api/reports`, { headers: authHeaders })
       .then((r) => r.json())
       .then((d) => setReports(d.reports))
       .catch(() => {});
@@ -66,7 +68,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/agent/seo`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ url }),
       });
       if (!res.ok) {
@@ -87,7 +89,7 @@ function App() {
   async function loadHistoryItem(id: number) {
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${id}`);
+      const res = await fetch(`${API_BASE}/api/reports/${id}`, { headers: authHeaders });
       if (!res.ok) {
         throw new Error("Failed to load report");
       }
@@ -108,7 +110,7 @@ function App() {
 
   async function confirmDelete(id: number) {
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/reports/${id}`, { method: "DELETE", headers: authHeaders });
       if (!res.ok) {
         throw new Error("Failed to delete report");
       }

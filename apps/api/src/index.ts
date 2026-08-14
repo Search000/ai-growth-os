@@ -20,6 +20,7 @@ import { runStrategyEngine } from "./engines/strategy-engine.js";
 import { addMemory, getRecentMemory, clearMemory } from "./db/memory.js";
 import { registerJobHandler, enqueueJob } from "./jobs/runner.js";
 import { getJob, listJobs } from "./db/jobs.js";
+import { apiKeyAuth } from "./auth/api-key.js";
 import "./db/client.js";
 
 registerTools();
@@ -56,6 +57,8 @@ const globalLimiter = rateLimit({
   message: { error: { message: "Too many requests, slow down.", statusCode: 429 } },
 });
 app.use(globalLimiter);
+
+app.use(apiKeyAuth);
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
