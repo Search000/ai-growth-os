@@ -13,6 +13,10 @@ import { extractMetadata } from "./crawler/metadata.js";
 import { crawlSite } from "./crawler/site-crawler.js";
 import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
+import { runResearchAgent } from "./agent/research-agent.js";
+import { runCompetitorAgent } from "./agent/competitor-agent.js";
+import { runReportingAgent } from "./agent/reporting-agent.js";
+import { runQaAgent } from "./agent/qa-agent.js";
 import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
 import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import { generateContent, type ContentType } from "./engines/content-engine.js";
@@ -479,11 +483,21 @@ app.post("/api/knowledge/query", aiLimiter, async (req, res, next) => {
   }
 });
 
+app.post("/api/agent/research", aiLimiter, async (req, res, next) => { try { const { topic } = req.body; if (!topic || typeof topic !== "string") { throw new AppError("Field topic (string) is required", 400); } const report = await runResearchAgent(topic); res.json(report); } catch (err) { next(err); } });
+
+app.post("/api/agent/competitor", aiLimiter, async (req, res, next) => { try { const { ourUrl, competitorUrl } = req.body; if (!ourUrl || !competitorUrl || typeof ourUrl !== "string" || typeof competitorUrl !== "string") { throw new AppError("Fields ourUrl and competitorUrl (string) are required", 400); } const report = await runCompetitorAgent(normalizeUrl(ourUrl), normalizeUrl(competitorUrl)); res.json(report); } catch (err) { next(err); } });
+
+app.get("/api/agent/reporting", aiLimiter, async (req, res, next) => { try { const limit = req.query.limit ? Number(req.query.limit) : 10; const report = await runReportingAgent(limit); res.json(report); } catch (err) { next(err); } });
+
+app.post("/api/agent/qa", aiLimiter, async (req, res, next) => { try { const { sourceData, generatedText } = req.body; if (!generatedText || typeof generatedText !== "string") { throw new AppError("Field generatedText (string) is required", 400); } const report = await runQaAgent(sourceData ?? {}, generatedText); res.json(report); } catch (err) { next(err); } });
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(config.PORT, () => {
   logger.info(`AI Growth OS API listening on port ${config.PORT}`);
 });
+
+
 
 
