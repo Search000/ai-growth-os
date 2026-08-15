@@ -1,4 +1,4 @@
-﻿import { createJob, startJob, completeJob, failJob, getJob } from "../db/jobs.js";
+﻿import { createJob, startJob, completeJob, failJob, getJob, approveJob } from "../db/jobs.js";
 import { logger } from "../logger.js";
 
 type JobHandler = (input: unknown) => Promise<unknown>;
@@ -11,15 +11,26 @@ export function registerJobHandler(type: string, handler: JobHandler): void {
   handlers.set(type, handler);
 }
 
-export function enqueueJob(type: string, input: unknown): number {
+export function enqueueJob(type: string, input: unknown, requiresApproval = false): number {
   if (!handlers.has(type)) {
     throw new Error(`No handler registered for job type: ${type}`);
   }
-  const id = createJob(type, input);
-  queue.push(id);
-  logger.info({ jobId: id, type }, "Job enqueued");
-  processQueue();
+  const id = createJob(type, input, requiresApproval);
+  if (!requiresApproval) {
+    queue.push(id);
+    logger.info({ jobId: id, type }, "Job enqueued");
+    processQueue();
+  } else {
+    logger.info({ jobId: id, type }, "Job created, awaiting human approval");
+  }
   return id;
+}
+
+export function enqueueApprovedJob(id: number): void {
+  approveJob(id);
+  queue.push(id);
+  logger.info({ jobId: id }, "Approved job enqueued");
+  processQueue();
 }
 
 async function processQueue(): Promise<void> {

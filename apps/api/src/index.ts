@@ -18,11 +18,12 @@ import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import { generateContent, type ContentType } from "./engines/content-engine.js";
 import { runStrategyEngine } from "./engines/strategy-engine.js";
 import { addMemory, getRecentMemory, clearMemory } from "./db/memory.js";
-import { registerJobHandler, enqueueJob } from "./jobs/runner.js";
-import { getJob, listJobs } from "./db/jobs.js";
+import { registerJobHandler, enqueueJob, enqueueApprovedJob } from "./jobs/runner.js";
+import { getJob, listJobs, listPendingApprovals, rejectJob } from "./db/jobs.js";
 import { apiKeyAuth } from "./auth/api-key.js";
 import { createSchedule, listSchedules, setScheduleEnabled, deleteSchedule } from "./db/schedules.js";
 import { startScheduler, refreshScheduler } from "./scheduler/index.js";
+import { validateOutput } from "./validation/output-validator.js";
 import cron from "node-cron";
 import "./db/client.js";
 
@@ -45,6 +46,11 @@ registerJobHandler("seo_agent", async (input) => {
     durationMs: report.durationMs,
   });
   return report;
+});
+
+registerJobHandler("orm_response", async (input) => {
+  const { topic } = input as { topic: string };
+  return runStrategyEngine("orm", topic);
 });
 
 startScheduler();
@@ -194,6 +200,19 @@ app.post("/api/jobs/seo-agent", aiLimiter, (req, res, next) => {
   }
 });
 
+app.post("/api/jobs/orm-response", aiLimiter, (req, res, next) => {
+  try {
+    const { topic } = req.body;
+    if (!topic || typeof topic !== "string") {
+      throw new AppError("Field \"topic\" (string) is required", 400);
+    }
+    const jobId = enqueueJob("orm_response", { topic }, true);
+    res.status(202).json({ jobId, status: "pending_approval" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get("/api/jobs", (req, res) => {
   const limit = req.query.limit ? Number(req.query.limit) : 20;
   res.json({ jobs: listJobs(limit) });
@@ -206,6 +225,37 @@ app.get("/api/jobs/:id", (req, res, next) => {
       throw new AppError("Job not found", 404);
     }
     res.json({ job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/approvals", (req, res) => {
+  res.json({ pending: listPendingApprovals() });
+});
+
+app.post("/api/approvals/:id/approve", (req, res, next) => {
+  try {
+    enqueueApprovedJob(Number(req.params.id));
+    res.json({ approved: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/approvals/:id/reject", (req, res) => {
+  rejectJob(Number(req.params.id));
+  res.json({ rejected: true });
+});
+
+app.post("/api/validate", aiLimiter, async (req, res, next) => {
+  try {
+    const { sourceData, generatedText } = req.body;
+    if (!generatedText || typeof generatedText !== "string") {
+      throw new AppError("Field \"generatedText\" (string) is required", 400);
+    }
+    const result = await validateOutput(sourceData ?? {}, generatedText);
+    res.json(result);
   } catch (err) {
     next(err);
   }
