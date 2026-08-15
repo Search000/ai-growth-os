@@ -25,6 +25,7 @@ import { createSchedule, listSchedules, setScheduleEnabled, deleteSchedule } fro
 import { startScheduler, refreshScheduler } from "./scheduler/index.js";
 import { validateOutput } from "./validation/output-validator.js";
 import cron from "node-cron";
+import { ingestDocument, retrieveRelevantChunks } from "./knowledge/rag.js";
 import "./db/client.js";
 
 registerTools();
@@ -446,9 +447,43 @@ app.post("/api/content/:type", aiLimiter, async (req, res, next) => {
   }
 });
 
+app.post("/api/knowledge/ingest", aiLimiter, async (req, res, next) => {
+  try {
+    const { sourceType, sourceRef, text } = req.body;
+    if (!sourceType || typeof sourceType !== "string") {
+      throw new AppError(`"sourceType" (string) is required`, 400);
+    }
+    if (!sourceRef || typeof sourceRef !== "string") {
+      throw new AppError(`"sourceRef" (string) is required`, 400);
+    }
+    if (!text || typeof text !== "string") {
+      throw new AppError(`"text" (string) is required`, 400);
+    }
+    const chunkCount = await ingestDocument(sourceType, sourceRef, text);
+    res.status(201).json({ ingested: true, chunkCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/knowledge/query", aiLimiter, async (req, res, next) => {
+  try {
+    const { query, topK } = req.body;
+    if (!query || typeof query !== "string") {
+      throw new AppError(`"query" (string) is required`, 400);
+    }
+    const results = await retrieveRelevantChunks(query, topK ?? 5);
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(config.PORT, () => {
   logger.info(`AI Growth OS API listening on port ${config.PORT}`);
 });
+
+
