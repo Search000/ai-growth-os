@@ -1,4 +1,5 @@
 ﻿import { getAIProvider } from "../ai/index.js";
+import { validateOutput, type ValidationResult } from "../validation/output-validator.js";
 import { logger } from "../logger.js";
 
 export type ContentType = "brief" | "outline" | "article" | "landing-copy" | "product-description" | "faq" | "social-post" | "meta-description" | "title" | "cta";
@@ -8,6 +9,7 @@ export interface ContentResult {
   topic: string;
   content: string;
   durationMs: number;
+  validation?: ValidationResult;
 }
 
 const CONTENT_PROMPTS: Record<ContentType, string> = {
@@ -31,7 +33,6 @@ export async function generateContent(contentType: ContentType, topic: string, c
   }
 
   const prompt = `${promptTemplate}
-
 TOPIC: ${topic}
 ${context ? `\nADDITIONAL CONTEXT:\n${context}` : ""}
 
@@ -41,6 +42,15 @@ Do not invent facts, statistics, or claims you cannot support. If specific data 
   const provider = getAIProvider();
   const result = await provider.chat([{ role: "user", content: prompt }], { maxTokens: 1024 });
 
+  let validation: ValidationResult | undefined;
+  if (context && context.trim().length > 0) {
+    logger.info({ contentType, topic }, "Content Engine: validating output against provided context");
+    validation = await validateOutput({ context }, result.content);
+    if (!validation.passed) {
+      logger.warn({ contentType, topic, flaggedClaims: validation.flaggedClaims }, "Content Engine: validation flagged unsupported claims");
+    }
+  }
+
   const durationMs = Date.now() - start;
   logger.info({ contentType, topic, durationMs }, "Content Engine: complete");
 
@@ -49,5 +59,6 @@ Do not invent facts, statistics, or claims you cannot support. If specific data 
     topic,
     content: result.content,
     durationMs,
+    validation,
   };
 }
