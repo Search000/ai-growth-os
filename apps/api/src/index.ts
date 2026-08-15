@@ -108,7 +108,7 @@ app.get("/api/tools", (req, res) => {
 
 app.post("/api/tools/:name/execute", aiLimiter, async (req, res, next) => {
   try {
-    const result = await toolRegistry.execute(req.params.name, req.body ?? {});
+    const result = await toolRegistry.execute(String(req.params.name), req.body ?? {});
     res.json({ result });
   } catch (err) {
     next(err);
@@ -390,7 +390,7 @@ app.delete("/api/reports/:id", (req, res, next) => {
 
 app.post("/api/engine/:type", aiLimiter, async (req, res, next) => {
   try {
-    const engineType = req.params.type;
+    const engineType = String(req.params.type);
     if (!["geo", "aeo", "cro", "lpo"].includes(engineType)) {
       throw new AppError(`Unknown engine type: ${engineType}. Use geo, aeo, cro, or lpo.`, 400);
     }
@@ -409,7 +409,7 @@ app.post("/api/engine/:type", aiLimiter, async (req, res, next) => {
 
 app.post("/api/strategy/:type", aiLimiter, async (req, res, next) => {
   try {
-    const engineType = req.params.type;
+    const engineType = String(req.params.type);
     if (!["sem", "aso", "vseo", "smo", "orm"].includes(engineType)) {
       throw new AppError(`Unknown strategy engine: ${engineType}. Use sem, aso, vseo, smo, or orm.`, 400);
     }

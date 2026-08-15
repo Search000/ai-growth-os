@@ -1,5 +1,10 @@
-﻿import robotsParser from "robots-parser";
+﻿import robotsParserPkg from "robots-parser";
 import { logger } from "../logger.js";
+
+const robotsParser = robotsParserPkg as unknown as (
+  url: string,
+  contents: string
+) => { isAllowed: (url: string, ua?: string) => boolean | undefined };
 
 export async function isAllowedByRobots(targetUrl: string, userAgent = "AIGrowthOSBot"): Promise<boolean> {
   try {

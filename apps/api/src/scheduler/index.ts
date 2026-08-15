@@ -3,7 +3,7 @@ import { getEnabledSchedules, updateLastRun } from "../db/schedules.js";
 import { enqueueJob } from "../jobs/runner.js";
 import { logger } from "../logger.js";
 
-const activeTasks = new Map<number, cron.ScheduledTask>();
+const activeTasks = new Map<number, ReturnType<typeof cron.schedule>>();
 
 export function startScheduler(): void {
   const schedules = getEnabledSchedules();

@@ -6,7 +6,7 @@ import { logger } from "../logger.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, "..", "..", "..", "..", "data", "app.db");
 
-export const db = new Database(dbPath);
+export const db: Database.Database = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 
 db.exec(`
