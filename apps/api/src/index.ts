@@ -30,6 +30,7 @@ import { startScheduler, refreshScheduler } from "./scheduler/index.js";
 import { validateOutput } from "./validation/output-validator.js";
 import cron from "node-cron";
 import { ingestDocument, retrieveRelevantChunks } from "./knowledge/rag.js";
+import { generateReportPdf } from "./reports/pdf-generator.js";
 import "./db/client.js";
 
 registerTools();
@@ -491,12 +492,30 @@ app.get("/api/agent/reporting", aiLimiter, async (req, res, next) => { try { con
 
 app.post("/api/agent/qa", aiLimiter, async (req, res, next) => { try { const { sourceData, generatedText } = req.body; if (!generatedText || typeof generatedText !== "string") { throw new AppError("Field generatedText (string) is required", 400); } const report = await runQaAgent(sourceData ?? {}, generatedText); res.json(report); } catch (err) { next(err); } });
 
+app.get("/api/reports/:id/pdf", (req, res, next) => {
+  try {
+    const report = getReport(Number(req.params.id));
+    if (!report) {
+      throw new AppError("Report not found", 404);
+    }
+    const doc = generateReportPdf(report);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=seo-report-${report.id}.pdf`);
+    doc.pipe(res);
+    doc.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(config.PORT, () => {
   logger.info(`AI Growth OS API listening on port ${config.PORT}`);
 });
+
+
 
 
 
