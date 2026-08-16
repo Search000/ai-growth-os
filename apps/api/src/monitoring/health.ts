@@ -41,7 +41,7 @@ export async function getSystemHealth(): Promise<SystemHealth> {
   try {
     const pendingRow = db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status IN ('pending', 'pending_approval')").get() as { c: number };
     const runningRow = db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'running'").get() as { c: number };
-    const failedRow = db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'failed' AND finished_at > datetime('now', '-1 hour')").get() as { c: number };
+    const failedRow = db.prepare("SELECT COUNT(*) as c FROM jobs WHERE status = 'failed' AND finished_at > datetime('now', '-1 hour') AND (error IS NULL OR error NOT LIKE '%manual cleanup%')").get() as { c: number };
     pendingCount = pendingRow.c;
     runningCount = runningRow.c;
     failedLastHour = failedRow.c;
@@ -101,3 +101,4 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     },
   };
 }
+
