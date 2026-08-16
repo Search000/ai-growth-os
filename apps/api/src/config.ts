@@ -13,6 +13,7 @@ const envSchema = z.object({
   AI_TEMPERATURE: z.coerce.number().default(0.3),
   AI_MAX_OUTPUT_TOKENS: z.coerce.number().default(1024),
   API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
 });
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {

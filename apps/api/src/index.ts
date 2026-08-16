@@ -15,6 +15,7 @@ import { runSeoChecks, scoreChecks } from "./seo/rules.js";
 import { runSeoAgent } from "./agent/seo-agent.js";
 import { runResearchAgent } from "./agent/research-agent.js";
 import { runCompetitorAgent } from "./agent/competitor-agent.js";
+import { findCompetitors } from "./agent/find-competitors.js";
 import { runReportingAgent } from "./agent/reporting-agent.js";
 import { runQaAgent } from "./agent/qa-agent.js";
 import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
@@ -514,6 +515,7 @@ app.post("/api/knowledge/query", aiLimiter, async (req, res, next) => {
 
 app.post("/api/agent/research", aiLimiter, async (req, res, next) => { try { const { topic } = req.body; if (!topic || typeof topic !== "string") { throw new AppError("Field topic (string) is required", 400); } const report = await runResearchAgent(topic); res.json(report); } catch (err) { next(err); } });
 
+app.post("/api/agent/find-competitors", aiLimiter, async (req, res, next) => { try { const { url } = req.body; if (!url || typeof url !== "string" || !isValidUrl(url)) { throw new AppError("Field \"url\" (valid http/https URL) is required", 400); } const competitors = await findCompetitors(normalizeUrl(url)); res.json({ competitors }); } catch (err) { next(err); } });
 app.post("/api/agent/competitor", aiLimiter, async (req, res, next) => { try { const { ourUrl, competitorUrl } = req.body; if (!ourUrl || !competitorUrl || typeof ourUrl !== "string" || typeof competitorUrl !== "string") { throw new AppError("Fields ourUrl and competitorUrl (string) are required", 400); } const report = await runCompetitorAgent(normalizeUrl(ourUrl), normalizeUrl(competitorUrl)); res.json(report); } catch (err) { next(err); } });
 
 app.get("/api/agent/reporting", aiLimiter, async (req, res, next) => { try { const limit = req.query.limit ? Number(req.query.limit) : 10; const report = await runReportingAgent(limit); res.json(report); } catch (err) { next(err); } });
