@@ -341,6 +341,33 @@ app.post("/api/seo/analyze", aiLimiter, async (req, res, next) => {
   }
 });
 
+app.post("/api/agent/site-audit", aiLimiter, async (req, res, next) => {
+  try {
+    const { url, maxPages } = req.body;
+    if (!url || typeof url !== "string" || !isValidUrl(url)) {
+      throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
+    }
+
+    const crawl = await crawlSite(normalizeUrl(url), { maxPages: maxPages ?? 10 });
+
+    const pages = crawl.pages.map((p) => {
+      const checks = runSeoChecks(p.metadata, p.statusCode);
+      const score = scoreChecks(checks);
+      return { url: p.url, statusCode: p.statusCode, score, checks };
+    });
+
+    res.json({
+      startUrl: crawl.startUrl,
+      pagesCrawled: crawl.pagesCrawled,
+      pages,
+      errors: crawl.errors,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
 app.post("/api/agent/seo", aiLimiter, async (req, res, next) => {
   try {
     const { url } = req.body;
