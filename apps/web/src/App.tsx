@@ -30,12 +30,154 @@ interface AgentResult {
   savedId?: number;
 }
 
+interface SystemHealth {
+  status: "healthy" | "degraded" | "down";
+  timestamp: string;
+  ai: { healthy: boolean; model: string };
+  database: { healthy: boolean; reachable: boolean };
+  jobs: { pendingCount: number; runningCount: number; failedLastHour: number };
+  errors: { countLastHour: number; recent: { message: string; path: string; method: string; statusCode: number; timestamp: string }[] };
+  resources: { uptimeSeconds: number; memoryUsedMb: number; memoryTotalMb: number; cpuLoadAvg1m: number };
+}
+
 function StatusDot({ status }: { status: SeoCheck["status"] }) {
   const color = status === "pass" ? "#3fb950" : status === "warn" ? "#d29922" : "#f85149";
   return <span className="dot" style={{ background: color }} />;
 }
 
+function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function MonitoringView() {
+  const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function loadHealth() {
+    fetch(`${API_BASE}/api/system/health`, { headers: authHeaders })
+      .then((r) => r.json())
+      .then((d) => {
+        setHealth(d);
+        setError(null);
+      })
+      .catch(() => setError("Failed to reach API server"));
+  }
+
+  useEffect(() => {
+    loadHealth();
+    const interval = setInterval(loadHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (error) {
+    return (
+      <div className="monitoring-layout">
+        <div className="status-banner down">● API UNREACHABLE — {error}</div>
+      </div>
+    );
+  }
+
+  if (!health) {
+    return (
+      <div className="monitoring-layout">
+        <div className="loading-box">Loading system health...</div>
+      </div>
+    );
+  }
+
+  const statusLabel =
+    health.status === "healthy" ? "● ALL SYSTEMS HEALTHY" : health.status === "degraded" ? "▲ SYSTEM DEGRADED" : "✕ SYSTEM DOWN";
+
+  const memPct = Math.round((health.resources.memoryUsedMb / health.resources.memoryTotalMb) * 100);
+
+  return (
+    <div className="monitoring-layout">
+      <div className={`status-banner ${health.status}`}>{statusLabel}</div>
+
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-label">Local AI</div>
+          <div className={`metric-value ${health.ai.healthy ? "good" : "bad"}`}>
+            {health.ai.healthy ? "Online" : "Offline"}
+          </div>
+          <div className="metric-sub">{health.ai.model}</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">Database</div>
+          <div className={`metric-value ${health.database.healthy ? "good" : "bad"}`}>
+            {health.database.healthy ? "Connected" : "Unreachable"}
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">Jobs Pending</div>
+          <div className="metric-value">{health.jobs.pendingCount}</div>
+          <div className="metric-sub">{health.jobs.runningCount} running now</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">Failures (1h)</div>
+          <div className={`metric-value ${health.jobs.failedLastHour > 0 ? "bad" : "good"}`}>
+            {health.jobs.failedLastHour}
+          </div>
+          <div className="metric-sub">job failures</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">App Errors (1h)</div>
+          <div className={`metric-value ${health.errors.countLastHour > 0 ? "bad" : "good"}`}>
+            {health.errors.countLastHour}
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">Uptime</div>
+          <div className="metric-value">{formatUptime(health.resources.uptimeSeconds)}</div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">Memory</div>
+          <div className="metric-value">{memPct}%</div>
+          <div className="metric-sub">
+            {health.resources.memoryUsedMb} / {health.resources.memoryTotalMb} MB
+          </div>
+        </div>
+
+        <div className="metric-card">
+          <div className="metric-label">CPU Load (1m)</div>
+          <div className="metric-value">{health.resources.cpuLoadAvg1m}</div>
+        </div>
+      </div>
+
+      {health.errors.recent.length > 0 && (
+        <div>
+          <h2>Recent Errors</h2>
+          <div className="error-list">
+            {health.errors.recent.map((e, i) => (
+              <div className="error-row" key={i}>
+                <div className="error-meta">
+                  {e.method} {e.path} — {e.statusCode} — {new Date(e.timestamp).toLocaleTimeString()}
+                </div>
+                <div className="error-message">{e.message}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="refresh-note">Auto-refreshes every 10s — last updated {new Date(health.timestamp).toLocaleTimeString()}</div>
+    </div>
+  );
+}
+
 function App() {
+  const [view, setView] = useState<"audit" | "monitoring">("audit");
   const [url, setUrl] = useState("https://example.com");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AgentResult | null>(null);
@@ -162,110 +304,123 @@ function App() {
     <div className="terminal">
       <header className="topbar">
         <span className="brand">AI GROWTH OS</span>
+        <div className="view-toggle">
+          <button className={view === "audit" ? "active" : ""} onClick={() => setView("audit")}>
+            SEO AUDIT
+          </button>
+          <button className={view === "monitoring" ? "active" : ""} onClick={() => setView("monitoring")}>
+            MONITORING
+          </button>
+        </div>
         <span className={`ai-status ${aiHealthy ? "ok" : "down"}`}>
           {aiHealthy === null ? "checking..." : aiHealthy ? "● LOCAL AI ONLINE" : "○ LOCAL AI OFFLINE"}
         </span>
       </header>
 
-      <main className="layout">
-        <section className="panel audit-panel">
-          <h2>SEO Audit</h2>
-          <div className="input-row">
-            <input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com"
-              disabled={loading}
-            />
-            <button onClick={runAudit} disabled={loading}>
-              {loading ? "RUNNING..." : "RUN AUDIT"}
-            </button>
-          </div>
-
-          {error && <div className="error-box">{error}</div>}
-
-          {loading && (
-            <div className="loading-box">
-              Crawling page → running SEO checks → generating AI recommendations...
-              <br />
-              (local 8B model, may take 20-60s)
+      {view === "monitoring" ? (
+        <MonitoringView />
+      ) : (
+        <main className="layout">
+          <section className="panel audit-panel">
+            <h2>SEO Audit</h2>
+            <div className="input-row">
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com"
+                disabled={loading}
+              />
+              <button onClick={runAudit} disabled={loading}>
+                {loading ? "RUNNING..." : "RUN AUDIT"}
+              </button>
             </div>
-          )}
 
-          {result && (
-            <div className="result-box">
-              <div className="score-row">
-                <span className="score">{result.toolResult.score}</span>
-                <span className="score-label">SEO SCORE</span>
-                <span className="duration">{(result.durationMs / 1000).toFixed(1)}s</span>
-                <button className="export-btn" onClick={exportReport}>
-                  EXPORT
-                </button>
-              </div>
+            {error && <div className="error-box">{error}</div>}
 
-              <div className="checks-grid">
-                {result.toolResult.checks.map((c) => (
-                  <div className="check-row" key={c.id}>
-                    <StatusDot status={c.status} />
-                    <span className="check-label">{c.label}</span>
-                    <span className="check-message">{c.message}</span>
-                  </div>
-                ))}
+            {loading && (
+              <div className="loading-box">
+                Crawling page → running SEO checks → generating AI recommendations...
+                <br />
+                (local 8B model, may take 20-60s)
               </div>
+            )}
 
-              <div className="recommendation-box">
-                <h3>AI Recommendations</h3>
-                <p>{result.recommendation}</p>
+            {result && (
+              <div className="result-box">
+                <div className="score-row">
+                  <span className="score">{result.toolResult.score}</span>
+                  <span className="score-label">SEO SCORE</span>
+                  <span className="duration">{(result.durationMs / 1000).toFixed(1)}s</span>
+                  <button className="export-btn" onClick={exportReport}>
+                    EXPORT
+                  </button>
+                </div>
+
+                <div className="checks-grid">
+                  {result.toolResult.checks.map((c) => (
+                    <div className="check-row" key={c.id}>
+                      <StatusDot status={c.status} />
+                      <span className="check-label">{c.label}</span>
+                      <span className="check-message">{c.message}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="recommendation-box">
+                  <h3>AI Recommendations</h3>
+                  <p>{result.recommendation}</p>
+                </div>
               </div>
+            )}
+          </section>
+
+          <section className="panel history-panel">
+            <h2>Audit History</h2>
+            <div className="history-list">
+              {reports.length === 0 && <div className="empty">No audits yet</div>}
+              {reports.map((r) => (
+                <div key={r.id} className={`history-row ${activeId === r.id ? "active" : ""}`}>
+                  {confirmDeleteId === r.id ? (
+                    <div className="confirm-row">
+                      <span className="confirm-text">Delete this audit?</span>
+                      <button className="confirm-yes" onClick={() => confirmDelete(r.id)}>
+                        YES
+                      </button>
+                      <button className="confirm-no" onClick={() => setConfirmDeleteId(null)}>
+                        NO
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="history-score" onClick={() => loadHistoryItem(r.id)}>
+                        {r.score}
+                      </span>
+                      <span className="history-url" onClick={() => loadHistoryItem(r.id)}>
+                        {r.url}
+                      </span>
+                      <span className="history-time" onClick={() => loadHistoryItem(r.id)}>
+                        {new Date(r.created_at + "Z").toLocaleTimeString()}
+                      </span>
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(r.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
             </div>
-          )}
-        </section>
-
-        <section className="panel history-panel">
-          <h2>Audit History</h2>
-          <div className="history-list">
-            {reports.length === 0 && <div className="empty">No audits yet</div>}
-            {reports.map((r) => (
-              <div key={r.id} className={`history-row ${activeId === r.id ? "active" : ""}`}>
-                {confirmDeleteId === r.id ? (
-                  <div className="confirm-row">
-                    <span className="confirm-text">Delete this audit?</span>
-                    <button className="confirm-yes" onClick={() => confirmDelete(r.id)}>
-                      YES
-                    </button>
-                    <button className="confirm-no" onClick={() => setConfirmDeleteId(null)}>
-                      NO
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="history-score" onClick={() => loadHistoryItem(r.id)}>
-                      {r.score}
-                    </span>
-                    <span className="history-url" onClick={() => loadHistoryItem(r.id)}>
-                      {r.url}
-                    </span>
-                    <span className="history-time" onClick={() => loadHistoryItem(r.id)}>
-                      {new Date(r.created_at + "Z").toLocaleTimeString()}
-                    </span>
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteId(r.id);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      </main>
+          </section>
+        </main>
+      )}
     </div>
   );
 }
 
 export default App;
+
