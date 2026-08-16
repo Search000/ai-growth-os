@@ -1,5 +1,6 @@
 ﻿import { getAIProvider } from "../ai/index.js";
 import { retrieveRelevantChunks } from "../knowledge/rag.js";
+import { geminiWebSearch } from "../ai/gemini-search.js";
 import { logger } from "../logger.js";
 import type { AgentReport } from "./types.js";
 
@@ -9,18 +10,24 @@ export async function runResearchAgent(topic: string): Promise<AgentReport> {
 
   logger.info({ topic }, "Research Agent: retrieving knowledge base context");
   const chunks = await retrieveRelevantChunks(topic, 5);
-  const context = chunks.length > 0
+  const localContext = chunks.length > 0
     ? chunks.map((c) => `[${c.sourceType}:${c.sourceRef ?? "unknown"}] ${c.content}`).join("\n\n")
     : "No relevant internal knowledge found.";
 
+  logger.info({ topic }, "Research Agent: searching the web");
+  const webContext = await geminiWebSearch(topic);
+
   logger.info({ topic }, "Research Agent: generating research summary");
   const provider = getAIProvider();
-  const prompt = `You are a research analyst. Using ONLY the internal knowledge context below, write a concise research summary on the topic. If the context does not contain enough information, clearly say so instead of inventing facts.
+  const prompt = `You are a research analyst. Write a concise research summary on the topic below, using the internal knowledge context and the web research context provided. Prefer the web research context for facts about the outside world; use the internal knowledge context for anything specific to this business. If neither source has enough information, clearly say so instead of inventing facts.
 
 TOPIC: ${topic}
 
 INTERNAL KNOWLEDGE CONTEXT:
-${context}
+${localContext}
+
+WEB RESEARCH CONTEXT:
+${webContext ?? "No web research available (Gemini API not configured or request failed)."}
 
 Write a research summary (key facts, gaps, and suggested next research steps):`;
 
@@ -31,7 +38,7 @@ Write a research summary (key facts, gaps, and suggested next research steps):`;
   return {
     task: "research",
     input: { topic },
-    result: { chunksUsed: chunks.length, chunks },
+    result: { chunksUsed: chunks.length, chunks, webResearchUsed: webContext !== null },
     recommendation: aiResult.content,
     durationMs,
   };

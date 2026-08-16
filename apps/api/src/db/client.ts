@@ -21,4 +21,15 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS agent_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_type TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    recommendation TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
 logger.info({ dbPath }, "Database initialized");

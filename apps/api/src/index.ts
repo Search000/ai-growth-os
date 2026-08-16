@@ -18,6 +18,7 @@ import { runCompetitorAgent } from "./agent/competitor-agent.js";
 import { findCompetitors } from "./agent/find-competitors.js";
 import { runReportingAgent } from "./agent/reporting-agent.js";
 import { runQaAgent } from "./agent/qa-agent.js";
+import { saveAgentReport, listAgentReports, getAgentReport, deleteAgentReport } from "./db/agent-reports.js";
 import { saveReport, listReports, getReport, deleteReport } from "./db/reports.js";
 import { runAnalysisEngine } from "./engines/analysis-engine.js";
 import { generateContent, type ContentType } from "./engines/content-engine.js";
@@ -344,6 +345,7 @@ app.post("/api/seo/analyze", aiLimiter, async (req, res, next) => {
 
 app.post("/api/agent/site-audit", aiLimiter, async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const { url, maxPages } = req.body;
     if (!url || typeof url !== "string" || !isValidUrl(url)) {
       throw new AppError("Field \"url\" (valid http/https URL) is required", 400);
@@ -357,11 +359,23 @@ app.post("/api/agent/site-audit", aiLimiter, async (req, res, next) => {
       return { url: p.url, statusCode: p.statusCode, score, checks };
     });
 
+    const durationMs = Date.now() - startTime;
+    const avgScore = pages.length > 0 ? Math.round(pages.reduce((sum, p) => sum + p.score, 0) / pages.length) : 0;
+    const savedId = saveAgentReport({
+      agentType: "siteaudit",
+      input: { url, maxPages },
+      result: { startUrl: crawl.startUrl, pagesCrawled: crawl.pagesCrawled, pages, errors: crawl.errors },
+      recommendation: `Crawled ${crawl.pagesCrawled} pages, average SEO score ${avgScore}/100, ${crawl.errors.length} crawl errors.`,
+      durationMs,
+    });
+
     res.json({
       startUrl: crawl.startUrl,
       pagesCrawled: crawl.pagesCrawled,
       pages,
       errors: crawl.errors,
+      durationMs,
+      savedId,
     });
   } catch (err) {
     next(err);
@@ -513,12 +527,12 @@ app.post("/api/knowledge/query", aiLimiter, async (req, res, next) => {
   }
 });
 
-app.post("/api/agent/research", aiLimiter, async (req, res, next) => { try { const { topic } = req.body; if (!topic || typeof topic !== "string") { throw new AppError("Field topic (string) is required", 400); } const report = await runResearchAgent(topic); res.json(report); } catch (err) { next(err); } });
+app.post("/api/agent/research", aiLimiter, async (req, res, next) => { try { const { topic } = req.body; if (!topic || typeof topic !== "string") { throw new AppError("Field topic (string) is required", 400); } const report = await runResearchAgent(topic); const savedId = saveAgentReport({ agentType: "research", input: report.input, result: report.result, recommendation: report.recommendation, durationMs: report.durationMs }); res.json({ ...report, savedId }); } catch (err) { next(err); } });
 
 app.post("/api/agent/find-competitors", aiLimiter, async (req, res, next) => { try { const { url } = req.body; if (!url || typeof url !== "string" || !isValidUrl(url)) { throw new AppError("Field \"url\" (valid http/https URL) is required", 400); } const competitors = await findCompetitors(normalizeUrl(url)); res.json({ competitors }); } catch (err) { next(err); } });
-app.post("/api/agent/competitor", aiLimiter, async (req, res, next) => { try { const { ourUrl, competitorUrl } = req.body; if (!ourUrl || !competitorUrl || typeof ourUrl !== "string" || typeof competitorUrl !== "string") { throw new AppError("Fields ourUrl and competitorUrl (string) are required", 400); } const report = await runCompetitorAgent(normalizeUrl(ourUrl), normalizeUrl(competitorUrl)); res.json(report); } catch (err) { next(err); } });
+app.post("/api/agent/competitor", aiLimiter, async (req, res, next) => { try { const { ourUrl, competitorUrl } = req.body; if (!ourUrl || !competitorUrl || typeof ourUrl !== "string" || typeof competitorUrl !== "string") { throw new AppError("Fields ourUrl and competitorUrl (string) are required", 400); } const report = await runCompetitorAgent(normalizeUrl(ourUrl), normalizeUrl(competitorUrl)); const savedId = saveAgentReport({ agentType: "competitor", input: report.input, result: report.result, recommendation: report.recommendation, durationMs: report.durationMs }); res.json({ ...report, savedId }); } catch (err) { next(err); } });
 
-app.get("/api/agent/reporting", aiLimiter, async (req, res, next) => { try { const limit = req.query.limit ? Number(req.query.limit) : 10; const report = await runReportingAgent(limit); res.json(report); } catch (err) { next(err); } });
+app.get("/api/agent/reporting", aiLimiter, async (req, res, next) => { try { const limit = req.query.limit ? Number(req.query.limit) : 10; const report = await runReportingAgent(limit); const savedId = saveAgentReport({ agentType: "reporting", input: report.input, result: report.result, recommendation: report.recommendation, durationMs: report.durationMs }); res.json({ ...report, savedId }); } catch (err) { next(err); } });
 
 app.post("/api/agent/qa", aiLimiter, async (req, res, next) => { try { const { sourceData, generatedText } = req.body; if (!generatedText || typeof generatedText !== "string") { throw new AppError("Field generatedText (string) is required", 400); } const report = await runQaAgent(sourceData ?? {}, generatedText); res.json(report); } catch (err) { next(err); } });
 
@@ -533,6 +547,44 @@ app.get("/api/reports/:id/pdf", (req, res, next) => {
     res.setHeader("Content-Disposition", `attachment; filename=seo-report-${report.id}.pdf`);
     doc.pipe(res);
     doc.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/agent-reports", (req, res, next) => {
+  try {
+    const type = req.query.type;
+    if (!type || typeof type !== "string") {
+      throw new AppError("Query param \"type\" (string) is required", 400);
+    }
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const reports = listAgentReports(type, limit);
+    res.json({ reports });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/api/agent-reports/:id", (req, res, next) => {
+  try {
+    const report = getAgentReport(Number(req.params.id));
+    if (!report) {
+      throw new AppError("Report not found", 404);
+    }
+    res.json({ report });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete("/api/agent-reports/:id", (req, res, next) => {
+  try {
+    const deleted = deleteAgentReport(Number(req.params.id));
+    if (!deleted) {
+      throw new AppError("Report not found", 404);
+    }
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }
